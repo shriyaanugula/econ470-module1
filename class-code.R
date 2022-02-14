@@ -2,8 +2,6 @@ if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, stringr, readxl, data.table, 
                gdata, MatchIt, cobalt)
 
-install.packages('Matching')
-
 ## Simulate data
 set.seed(12345678)
 n <- 10000
@@ -19,6 +17,9 @@ select.dat <- tibble(
   y1_alt = y0_alt+4,
   y_alt = y1_alt*d_alt + y0_alt*(1-d_alt)
 )
+
+## mean of outcomes
+select.dat %>% group_by(d) %>% summarize(y_mean=mean(y))
   
 ## nearest neighbor matching with euclidean distance weights
 nn.est1 <- Matching::Match(Y=select.dat$y,
@@ -112,19 +113,22 @@ select.dat <- select.dat %>%
   mutate(ipw = case_when(
     d_alt == 1 ~ 1/ps,
     d_alt == 0 ~ 1/(1-ps)
-    ),
-    out_weight=y_alt*ipw
-  )
+    ))
 
-select.dat %>% group_by(d_alt) %>% summarize(out_weight)
+
+mean.t1 <- select.dat %>% filter(d_alt==1) %>% summarize(mean_y=weighted.mean(y_alt, w=ipw))
+mean.t0 <- select.dat %>% filter(d_alt==0) %>% summarize(mean_y=weighted.mean(y_alt, w=ipw))
+mean.t1$mean_y - mean.t0$mean_y
+reg.ipw <- lm(y_alt ~ d_alt, data=select.dat, weights=ipw)
+
 
 ## Assessing balance
 baseline.match <- matchit(d_alt~x+z, data=select.dat, method=NULL, distance="mahalanobis")
-plot(summary(baseline.match))
+summary(baseline.match)
 
 update.match <- matchit(d_alt~x+z, data=select.dat, method="nearest", distance="mahalanobis", replace=TRUE)
-match.mod <- summary(update.match)
-library(cobalt)
+summary(update.match)
+
 bal.tab(update.match)
 love.plot(update.match)
 bal.plot(update.match, var.name="x", which="both")
